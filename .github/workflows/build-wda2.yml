@@ -1,0 +1,53 @@
+name: Build WebDriverAgent IPA (unsigned)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout WebDriverAgent
+        uses: actions/checkout@v4
+        with:
+          repository: appium/WebDriverAgent
+          ref: v5.15.6
+          path: WebDriverAgent
+
+      - name: Build WDA for iOS device (no codesign)
+        working-directory: WebDriverAgent
+        run: |
+          xcodebuild build-for-testing \
+            -project WebDriverAgent.xcodeproj \
+            -scheme WebDriverAgentRunner \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ./build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO
+
+      - name: Find the .app
+        id: find_app
+        working-directory: WebDriverAgent
+        run: |
+          APP_PATH=$(find ./build -name "WebDriverAgentRunner-Runner.app" -type d | head -1)
+          echo "app_path=$APP_PATH" >> $GITHUB_OUTPUT
+          echo "Found: $APP_PATH"
+
+      - name: Package as IPA
+        working-directory: WebDriverAgent
+        run: |
+          mkdir -p Payload
+          cp -r "${{ steps.find_app.outputs.app_path }}" Payload/
+          zip -qr WebDriverAgentRunner.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebDriverAgentRunner-unsigned-ipa
+          path: WebDriverAgent/WebDriverAgentRunner.ipa
+          retention-days: 7

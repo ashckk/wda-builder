@@ -43,6 +43,7 @@ jobs:
         run: |
           mkdir -p Payload
           cp -r "${{ steps.find_app.outputs.app_path }}" Payload/
+          find Payload -type d \( -name '*.dSYM' -o -name 'XC*.framework' \) -prune -exec rm -rf {} +
           zip -qr WebDriverAgentRunner.ipa Payload
 
       - name: Upload IPA

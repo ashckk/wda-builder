@@ -1,54 +1,38 @@
-name: Build WebDriverAgent IPA (unsigned)
+name: Package compatible WebDriverAgent IPA for iOS 15
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  build:
+  package:
     runs-on: macos-15
-    timeout-minutes: 30
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout WebDriverAgent
-        uses: actions/checkout@v4
-        with:
-          repository: appium/WebDriverAgent
-          ref: v5.15.6
-          path: WebDriverAgent
-
-      - name: Build WDA for iOS device (no codesign)
-        working-directory: WebDriverAgent
+      - name: Download official Appium WDA device build
+        shell: bash
         run: |
-          xcodebuild build-for-testing \
-            -project WebDriverAgent.xcodeproj \
-            -scheme WebDriverAgentRunner \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath ./build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ARCHS=arm64 \
-            ONLY_ACTIVE_ARCH=NO
-
-      - name: Find the .app
-        id: find_app
-        working-directory: WebDriverAgent
-        run: |
-          APP_PATH=$(find ./build -name "WebDriverAgentRunner-Runner.app" -type d | head -1)
-          echo "app_path=$APP_PATH" >> $GITHUB_OUTPUT
-          echo "Found: $APP_PATH"
-
-      - name: Package as IPA
-        working-directory: WebDriverAgent
-        run: |
-          mkdir -p Payload
-          cp -r "${{ steps.find_app.outputs.app_path }}" Payload/
-          find Payload -type d \( -name '*.dSYM' -o -name 'XC*.framework' \) -prune -exec rm -rf {} +
-          zip -qr WebDriverAgentRunner.ipa Payload
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            https://github.com/appium/WebDriverAgent/releases/download/v5.15.6/WebDriverAgentRunner-Runner.zip \
+            --output WDA-device.zip
+          mkdir extracted
+          unzip -q WDA-device.zip -d extracted
+          APP_PATH="$(find extracted -type d -name 'WebDriverAgentRunner-Runner.app' -print -quit)"
+          test -n "$APP_PATH"
+          mkdir -p package/Payload
+          find "$APP_PATH" -type d \( -name '*.dSYM' -o -name 'XC*.framework' \) -prune -exec rm -rf {} +
+          ditto "$APP_PATH" package/Payload/WebDriverAgentRunner-Runner.app
+          (cd package && /usr/bin/zip -qry ../WebDriverAgentRunner-iOS15-unsigned.ipa Payload)
+          unzip -t WebDriverAgentRunner-iOS15-unsigned.ipa
+          shasum -a 256 WebDriverAgentRunner-iOS15-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: WebDriverAgentRunner-unsigned-ipa
-          path: WebDriverAgent/WebDriverAgentRunner.ipa
-          retention-days: 7
+          name: WebDriverAgentRunner-iOS15-unsigned-ipa
+          path: WebDriverAgentRunner-iOS15-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30

@@ -16,12 +16,20 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 \
-            https://github.com/appium/WebDriverAgent/releases/download/v5.15.6/WebDriverAgentRunner-Runner.zip \
+            https://github.com/appium/WebDriverAgent/releases/download/v4.13.0/WebDriverAgentRunner-Runner.zip \
             --output WDA-device.zip
           mkdir extracted
           unzip -q WDA-device.zip -d extracted
           APP_PATH="$(find extracted -type d -name 'WebDriverAgentRunner-Runner.app' -print -quit)"
           test -n "$APP_PATH"
+          SWIFT_SUPPORT="$APP_PATH/Frameworks/libXCTestSwiftSupport.dylib"
+          if [[ -f "$SWIFT_SUPPORT" ]]; then
+            nm -u "$SWIFT_SUPPORT" > swift-imports.txt
+            if grep -Fq 'XCTestCore5QueueC11synchronizeyyYaFTu' swift-imports.txt; then
+              echo "The WDA build imports an XCTestCore symbol unavailable on the target iOS 15 device." >&2
+              exit 1
+            fi
+          fi
           mkdir -p package/Payload
           find "$APP_PATH" -type d \( -name '*.dSYM' -o -name 'XC*.framework' \) -prune -exec rm -rf {} +
           ditto "$APP_PATH" package/Payload/WebDriverAgentRunner-Runner.app
